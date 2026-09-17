@@ -1,0 +1,12 @@
+{
+    "course-code": "csd217",
+    "term": "26f",
+    "faculty": [
+        { 
+            "name": "Rodney Martin",
+            "email": "rodney.martin@saultcollege.ca",
+            "github": "rmartin-sc" 
+        }
+    ],
+    "branch-pattern": "lab-{lab}"
+}
