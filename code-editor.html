@@ -1,0 +1,248 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>HTML / JavaScript Editor</title>
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      font-family: system-ui, sans-serif;
+      overflow: hidden;
+    }
+
+    header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 16px;
+      background: #222;
+      color: white;
+      flex-shrink: 0;
+    }
+
+    header button {
+      padding: 6px 12px;
+      cursor: pointer;
+    }
+
+    #status {
+      margin-left: auto;
+      font-size: 0.85rem;
+    }
+
+    #workspace {
+      flex: 1;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+    }
+
+    #editor {
+      height: 60%;
+      min-height: 0;
+      overflow: hidden;
+    }
+
+    .cm-editor {
+      height: 100%;
+    }
+
+    #divider {
+      height: 8px;
+      flex-shrink: 0;
+      background: #ccc;
+      cursor: row-resize;
+      touch-action: none;
+    }
+
+    #divider:hover,
+    #divider.dragging {
+      background: #888;
+    }
+
+    #preview {
+      flex: 1;
+      min-height: 0;
+      width: 100%;
+      border: none;
+      background: white;
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <strong>Code Editor</strong>
+  <button id="download">Download HTML</button>
+  <button id="run">Preview</button>
+  <span id="status">Ready</span>
+</header>
+
+<div id="workspace">
+  <div id="editor"></div>
+  <div id="divider" role="separator"
+       aria-label="Resize editor and preview"
+       aria-orientation="horizontal"></div>
+  <iframe id="preview" sandbox="allow-scripts"></iframe>
+</div>
+
+<script type="module">
+  import { EditorView, basicSetup } from
+    "https://esm.sh/codemirror@6.0.2";
+
+  import { html } from
+    "https://esm.sh/@codemirror/lang-html@6";
+
+  const STORAGE_KEY = "student-html-editor";
+  const SIZE_KEY = "student-editor-size";
+
+  const starter = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Code editor</title>
+</head>
+<body>
+  <h1>Code editor</h1>
+
+  <p>You can use this lightweight code editor during your CSD217 test</p>
+  <p>Make changes here, view the preview below, and use your browser dev tools to inspect your code.</p>
+
+  <script type="module">
+    // Write JS code in here
+    console.log("Hello from JavaScript!");
+  <\/script>
+</body>
+</html>`;
+
+  const status = document.querySelector("#status");
+  const preview = document.querySelector("#preview");
+  const editorElement = document.querySelector("#editor");
+  const workspace = document.querySelector("#workspace");
+  const divider = document.querySelector("#divider");
+
+  let saveTimer;
+
+  const editor = new EditorView({
+    doc: localStorage.getItem(STORAGE_KEY) ?? starter,
+    extensions: [
+      basicSetup,
+      html(),
+      EditorView.updateListener.of(update => {
+        if (!update.docChanged) return;
+
+        status.textContent = "Unsaved changes";
+        clearTimeout(saveTimer);
+
+        saveTimer = setTimeout(() => {
+          const code = update.state.doc.toString();
+
+          try {
+            localStorage.setItem(STORAGE_KEY, code);
+            status.textContent = "Autosaved";
+          } catch (error) {
+            status.textContent = "Autosave failed";
+            console.error(error);
+          }
+
+          // Refresh preview after each autosave attempt.
+          preview.srcdoc = code;
+        }, 500);
+      })
+    ],
+    parent: editorElement
+  });
+
+  function getCode() {
+    return editor.state.doc.toString();
+  }
+
+  function refreshPreview() {
+    preview.srcdoc = getCode();
+  }
+
+  document.querySelector("#run")
+    .addEventListener("click", refreshPreview);
+
+  document.querySelector("#download")
+    .addEventListener("click", () => {
+      const blob = new Blob([getCode()], {
+        type: "text/html"
+      });
+
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+
+      link.href = url;
+      link.download = "index.html";
+      link.click();
+
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    });
+
+  // Draggable divider
+  function setEditorSize(percent) {
+    percent = Math.max(10, Math.min(90, percent));
+    editorElement.style.height = `${percent}%`;
+    editorElement.style.flexShrink = "0";
+    return percent;
+  }
+
+  const savedSize = Number(localStorage.getItem(SIZE_KEY));
+  if (savedSize >= 10 && savedSize <= 90) {
+    setEditorSize(savedSize);
+  }
+
+  divider.addEventListener("pointerdown", event => {
+    if (event.button !== 0) return;
+
+    event.preventDefault();
+    divider.setPointerCapture(event.pointerId);
+    divider.classList.add("dragging");
+
+    // Prevent the iframe from capturing pointer movement.
+    preview.style.pointerEvents = "none";
+  });
+
+  divider.addEventListener("pointermove", event => {
+    if (!divider.hasPointerCapture(event.pointerId)) return;
+
+    const rect = workspace.getBoundingClientRect();
+    const percent = (event.clientY - rect.top) /
+                    rect.height * 100;
+
+    setEditorSize(percent);
+  });
+
+  function stopDragging(event) {
+    if (!divider.hasPointerCapture(event.pointerId)) return;
+
+    divider.releasePointerCapture(event.pointerId);
+    divider.classList.remove("dragging");
+    preview.style.pointerEvents = "";
+
+    const rect = workspace.getBoundingClientRect();
+    const percent = editorElement.getBoundingClientRect().height /
+                    rect.height * 100;
+
+    localStorage.setItem(SIZE_KEY, percent);
+  }
+
+  divider.addEventListener("pointerup", stopDragging);
+  divider.addEventListener("pointercancel", stopDragging);
+
+  // Initial preview
+  refreshPreview();
+</script>
+
+</body>
+</html>
